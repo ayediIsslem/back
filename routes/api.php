@@ -26,7 +26,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::delete('/adherents/{id}', [AdherentController::class, 'destroy']);
     Route::post('/adherents/{id}/assigner-pointeuse', [AdherentController::class, 'assignerPointeuse']);
     Route::post('/adherents/{id}/desassigner-pointeuse', [AdherentController::class, 'desassignerPointeuse']);
-    
+    Route::get('/adherents/{id}/crop-face', [AdherentController::class, 'cropFace']);
+
     Route::apiResource('adherents', AdherentController::class);
     // Pointeuses
     Route::get('/pointeuses', [PointeuseController::class, 'index']);

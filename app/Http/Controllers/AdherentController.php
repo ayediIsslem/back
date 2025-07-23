@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Adherent;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -153,4 +154,65 @@ class AdherentController extends Controller
         $a->delete();
         return response()->json(['message' => 'Supprimé']);
     }
+    public function cropFace($id)
+{
+    $adherent = Adherent::find($id);
+    if (!$adherent || !$adherent->photo_path) {
+        return response()->json(['message' => 'Image non trouvée'], 404);
+    }
+
+    $srcPath = public_path('storage/' . $adherent->photo_path);
+    $croppedName = 'cropped_' . basename($srcPath);
+    $destPath = storage_path("app/public/photos/" . $croppedName);
+
+    try {
+        $response = Http::timeout(5)->get('http://localhost:25002/ZKCropFace/CropFace', [
+            'SrcFileName' => $srcPath,
+            'DesFileName' => $destPath
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Erreur lors de la requête à ZKCropFace : ' . $e->getMessage());
+        return response()->json(['message' => 'Erreur de connexion au service de crop'], 500);
+    }
+
+    $body = trim($response->body());
+
+    // 1️⃣ Essai normal
+    $result = json_decode($body, true);
+
+    // 2️⃣ Si échec, on pense que c'est une string JSON encodée
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($result)) {
+        $body = stripslashes($body); // Enlève les \"
+        $decodedOnce = json_decode($body, true); // 1er décodage
+
+        if (is_string($decodedOnce)) {
+            $result = json_decode($decodedOnce, true); // 2e décodage
+        } else {
+            $result = $decodedOnce;
+        }
+    }
+
+    // 3️⃣ Vérification finale
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($result) || !isset($result['ret'])) {
+        Log::error('Décodage JSON échoué : ' . json_last_error_msg());
+        return response()->json([
+            'message' => 'Réponse non décodable du service de crop',
+            'raw_response' => $body
+        ], 500);
+    }
+
+    if ($result['ret'] === "0" && strpos($result['error'], 'Succ') !== false) {
+        return response()->json([
+            'message' => 'Image croppée avec succès',
+            'cropped_path' => asset('storage/photos/' . $croppedName),
+        ]);
+    }
+
+    return response()->json([
+        'message' => 'Erreur lors du crop',
+        'retour_service' => $result,
+    ], 500);
+}
+
+
 }
